@@ -478,11 +478,12 @@ public Task_CheckFrames()
 			continue;
 		}
 		
-		if(g_ePlayerInfo[id][m_Category] > Cat_CrazySpeed && g_ePlayerInfo[id][m_Frames] > g_ePlayerInfo[id][m_Category] + FPS_OFFSET
-			|| g_ePlayerInfo[id][m_Category] <= Cat_CrazySpeed && g_ePlayerInfo[id][m_Frames] > FPS_LIMIT + FPS_OFFSET)
+		new cat = g_ePlayerInfo[id][m_Category];
+		if(g_ePlayerInfo[id][m_Category] < Cat_FastRun && g_ePlayerInfo[id][m_Frames] > g_iCategorySign[cat] + FPS_OFFSET
+			|| g_ePlayerInfo[id][m_Category] >= Cat_FastRun && g_ePlayerInfo[id][m_Frames] > FPS_LIMIT + FPS_OFFSET)
 		{
 			ExecuteHamB(Ham_CS_RoundRespawn, id);
-			client_print_color(id, print_team_red, "%s^3 Write in your console fps_max %d!", PREFIX, g_ePlayerInfo[id][m_Category] > Cat_CrazySpeed ? g_ePlayerInfo[id][m_Category] : FPS_LIMIT);
+			client_print_color(id, print_team_red, "%s^3 Write in your console fps_max %d!", PREFIX, g_ePlayerInfo[id][m_Category] < Cat_FastRun ? g_iCategorySign[cat] : FPS_LIMIT);
 		}
 		g_ePlayerInfo[id][m_Frames] = 0;
 	}
