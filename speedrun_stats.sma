@@ -68,7 +68,6 @@ public plugin_init()
 	register_plugin(PLUGIN, VERSION, AUTHOR);
 	
 	register_clcmd("setfinish", "Command_SetFinish", ADMIN_CFG);
-	register_clcmd("say /test", "Cmd_Test");
 	register_clcmd("say /top15", "Command_Top15");
 	
 	RegisterHookChain(RG_CBasePlayer_Jump, "HC_CheckStartTimer", false);
@@ -87,16 +86,6 @@ public plugin_init()
 public plugin_precache()
 {
 	g_iSprite = precache_model("sprites/white.spr");
-}
-public Cmd_Test(id)
-{
-	new szRecordTime[32]; get_time("%Y-%m-%d %H:%M:%S", szRecordTime, charsmax(szRecordTime));
-	new temp = random(1000);
-	formatex(g_szQuery, charsmax(g_szQuery), "INSERT OR IGNORE INTO `results` VALUES (%d, %d, %d, %d, '%s'); UPDATE `results` SET besttime=%d, recorddate='%s' WHERE id=%d AND mid=%d AND category=%d",
-		g_ePlayerInfo[id][m_iPlayerIndex], g_iMapIndex, get_user_category(id), temp, szRecordTime, temp, szRecordTime, g_ePlayerInfo[id][m_iPlayerIndex], g_iMapIndex, get_user_category(id));
-	SQL_ThreadQuery(g_hTuple, "Query_IngnoredHandle", g_szQuery);
-	
-	server_print("query %s", g_szQuery);
 }
 public Command_SetFinish(id, level, cid)
 {
