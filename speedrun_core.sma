@@ -8,7 +8,7 @@
 #endif
 	
 #define PLUGIN "Speedrun: Core"
-#define VERSION "0.2"
+#define VERSION "0.3"
 #define AUTHOR "Mistrick"
 
 #pragma semicolon 1
@@ -16,6 +16,7 @@
 #define MAX_PLAYERS 32
 
 #define FPS_LIMIT 500
+#define FPS_OFFSET 10
 #define CRAZYSPEED_BOOST 250.0
 #define FASTRUN_AIRACCELERATE -55.0
 
@@ -26,15 +27,15 @@ enum (+=100)
 	TASK_SHOWSPEED = 100,
 	TASK_CHECKFRAMES
 };
-enum
+enum _:Categories
 {
-	Cat_FastRun = 1,
-	Cat_CrazySpeed = 2,
-	Cat_100fps = 100,
-	Cat_200fps = 200,
-	Cat_250fps = 250,
-	Cat_333fps = 333,
-	Cat_500fps = 500
+	Cat_100fps,
+	Cat_200fps,
+	Cat_250fps,
+	Cat_333fps,
+	Cat_500fps,
+	Cat_FastRun,
+	Cat_CrazySpeed
 };
 enum _:PlayerData
 {
@@ -45,10 +46,15 @@ enum _:PlayerData
 	m_SavePoint
 };
 
+new g_iCategorySign[Categories] = {100, 200, 250, 333, 500, 1, 2};
+
 new g_bStartPosition, Float:g_fStartOrigin[3], Float:g_fStartVAngles[3];
 new g_ePlayerInfo[33][PlayerData];
 new g_szMapName[32];
 new g_iSyncHudSpeed;
+new g_fwChangedCategory;
+new g_fwOnStart;
+new g_iReturn;
 
 public plugin_init()
 {
@@ -78,6 +84,9 @@ public plugin_init()
 	RegisterHookChain(RG_CSGameRules_DeadPlayerWeapons, "HC_CSGR_DeadPlayerWeapons_Pre", false);
 	
 	register_forward(FM_ClientKill, "FM_ClientKill_Pre", false);
+	
+	g_fwChangedCategory = CreateMultiForward("SR_ChangedCategory", ET_IGNORE, FP_CELL, FP_CELL);
+	g_fwOnStart = CreateMultiForward("SR_PlayerOnStart", ET_IGNORE, FP_CELL);
 	
 	set_msg_block(get_user_msgid("AmmoPickup"), BLOCK_SET);
 	set_msg_block(get_user_msgid("ClCorpse"), BLOCK_SET);
@@ -132,7 +141,6 @@ public plugin_cfg()
 	TrieDestroy(g_tRemoveEntities);
 	unregister_forward(FM_Spawn, g_iForwardSpawn, 0);
 	
-	get_mapname(g_szMapName, charsmax(g_szMapName));
 	LoadStartPosition();
 	SetGameName();
 	BlockChangingTeam();
@@ -144,6 +152,7 @@ LoadStartPosition()
 	
 	if(!dir_exists(szDir))	mkdir(szDir);
 	
+	get_mapname(g_szMapName, charsmax(g_szMapName));
 	new szFile[128]; formatex(szFile, charsmax(szFile), "%s%s.bin", szDir, g_szMapName);
 	
 	if(!file_exists(szFile)) return;
@@ -235,7 +244,7 @@ public Command_Start(id)
 		ExecuteHamB(Ham_CS_RoundRespawn, id);
 	}
 	
-	//ExecuteForward(g_fwOnStart, g_iReturn, id);
+	ExecuteForward(g_fwOnStart, g_iReturn, id);
 	
 	return PLUGIN_HANDLED;
 }
@@ -285,7 +294,7 @@ public CategoryMenu(id)
 	new szMenu[128], len = 0;
 	
 	len = formatex(szMenu[len], charsmax(szMenu) - len, "\yCategory Menu^n^n");
-	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r1. %sSpeedrun^n", g_ePlayerInfo[id][m_Category] > Cat_CrazySpeed ? "\r" : "\w");
+	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r1. %sSpeedrun^n", g_ePlayerInfo[id][m_Category] < Cat_FastRun ? "\r" : "\w");
 	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r2. %sFastrun^n", g_ePlayerInfo[id][m_Category] == Cat_FastRun ? "\r" : "\w");
 	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r3. %sCrazySpeed^n", g_ePlayerInfo[id][m_Category] == Cat_CrazySpeed ? "\r" : "\w");
 	len += formatex(szMenu[len], charsmax(szMenu) - len, "^n^n^n^n^n^n\r0. \wExit");
@@ -306,7 +315,7 @@ public CategoryMenu_Handler(id, key)
 	{
 		if(is_user_alive(id)) ExecuteHamB(Ham_CS_RoundRespawn, id);
 		
-		//ExecuteForward(g_fwChangeCategory, g_iReturn, id, g_ePlayerInfo[id][m_Category]);
+		ExecuteForward(g_fwChangedCategory, g_iReturn, id, g_ePlayerInfo[id][m_Category]);
 	}
 }
 public SpeedrunMenu(id)
@@ -338,7 +347,7 @@ public SpeedrunMenu_Handler(id, key)
 	{
 		if(is_user_alive(id)) ExecuteHamB(Ham_CS_RoundRespawn, id);
 		
-		//ExecuteForward(g_fwChangeCategory, g_iReturn, id, g_ePlayerInfo[id][m_Category]);
+		ExecuteForward(g_fwChangedCategory, g_iReturn, id, g_ePlayerInfo[id][m_Category]);
 	}
 }
 //*******************************************************************//
@@ -346,7 +355,7 @@ public Message_ScoreInfo(Msgid, Dest, id)
 {
 	new player = get_msg_arg_int(1);
 	set_msg_arg_int(2, ARG_SHORT, 0);//frags
-	set_msg_arg_int(3, ARG_SHORT, g_ePlayerInfo[player][m_Category]);//deaths
+	set_msg_arg_int(3, ARG_SHORT, g_iCategorySign[g_ePlayerInfo[player][m_Category]]);//deaths
 }
 //*******************************************************************//
 public HC_CBasePlayer_Spawn_Post(id)
@@ -469,8 +478,8 @@ public Task_CheckFrames()
 			continue;
 		}
 		
-		if(g_ePlayerInfo[id][m_Category] > Cat_CrazySpeed && g_ePlayerInfo[id][m_Frames] > g_ePlayerInfo[id][m_Category] + 10
-			|| g_ePlayerInfo[id][m_Category] <= Cat_CrazySpeed && g_ePlayerInfo[id][m_Frames] > FPS_LIMIT + 10)
+		if(g_ePlayerInfo[id][m_Category] > Cat_CrazySpeed && g_ePlayerInfo[id][m_Frames] > g_ePlayerInfo[id][m_Category] + FPS_OFFSET
+			|| g_ePlayerInfo[id][m_Category] <= Cat_CrazySpeed && g_ePlayerInfo[id][m_Frames] > FPS_LIMIT + FPS_OFFSET)
 		{
 			ExecuteHamB(Ham_CS_RoundRespawn, id);
 			client_print_color(id, print_team_red, "%s^3 Write in your console fps_max %d!", PREFIX, g_ePlayerInfo[id][m_Category] > Cat_CrazySpeed ? g_ePlayerInfo[id][m_Category] : FPS_LIMIT);
