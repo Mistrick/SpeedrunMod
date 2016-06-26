@@ -12,7 +12,7 @@
 #endif
 
 #define PLUGIN "Speedrun: Stats"
-#define VERSION "0.1"
+#define VERSION "0.2"
 #define AUTHOR "Mistrick"
 
 #pragma semicolon 1
@@ -39,8 +39,14 @@ enum _:Categories
 	Cat_FastRun,
 	Cat_CrazySpeed
 };
+enum _:Cvars
+{
+	SQL_HOST,
+	SQL_USER,
+	SQL_PASSWORD,
+	SQL_DATABASE
+};
 
-new const DATABASE[] = "addons/amxmodx/data/speedrun_stats.db";
 new const PREFIX[] = "^4[Speedrun]";
 
 new const g_szCategory[][] = 
@@ -48,6 +54,7 @@ new const g_szCategory[][] =
 	"[100 FPS]", "[200 FPS]", "[250 FPS]", "[333 FPS]", "[500 FPS]", "[Fastrun]", "[Crazy Speed]"
 };
 
+new g_pCvars[Cvars];
 new Handle:g_hTuple, g_szQuery[512];
 new g_szMapName[32];
 new g_iMapIndex;
@@ -67,8 +74,14 @@ public plugin_init()
 {
 	register_plugin(PLUGIN, VERSION, AUTHOR);
 	
+	g_pCvars[SQL_HOST] = register_cvar("speedrun_host", "127.0.0.1");
+	g_pCvars[SQL_USER] = register_cvar("speedrun_user", "root");
+	g_pCvars[SQL_PASSWORD] = register_cvar("speedrun_password", "root");
+	g_pCvars[SQL_DATABASE] = register_cvar("speedrun_database", "speedrun");
+	
 	register_clcmd("setfinish", "Command_SetFinish", ADMIN_CFG);
 	register_clcmd("say /top15", "Command_Top15");
+	register_clcmd("say /update", "Command_Update");
 	
 	RegisterHookChain(RG_CBasePlayer_Jump, "HC_CheckStartTimer", false);
 	RegisterHookChain(RG_CBasePlayer_Duck, "HC_CheckStartTimer", false);
@@ -81,7 +94,7 @@ public plugin_init()
 	
 	CreateTimer();
 	
-	SQL_Init();
+	DB_Init();
 }
 public plugin_precache()
 {
@@ -120,6 +133,16 @@ public Command_Top15(id)
 	
 	return PLUGIN_CONTINUE;
 }
+public Command_Update(id)
+{
+	
+	new szName[32]; get_user_name(id, szName, charsmax(szName)); SQL_PrepareString(szName, szName, charsmax(szName));
+	formatex(g_szQuery, charsmax(g_szQuery), "UPDATE `runners` SET nickname = '%s' WHERE id=%d", szName, g_ePlayerInfo[id][m_iPlayerIndex]);
+	
+	SQL_ThreadQuery(g_hTuple, "Query_IngnoredHandle", g_szQuery);
+	
+	return PLUGIN_CONTINUE;
+}
 CreateTimer()
 {
 	new ent = create_entity("info_target");	
@@ -127,23 +150,39 @@ CreateTimer()
 	set_entvar(ent, var_nextthink, get_gametime() + 1.0);	
 	register_think("timer_think", "Think_Timer");
 }
-SQL_Init()
+DB_Init()
+{
+	state mysql;
+	
+	new szDB[32]; get_pcvar_string(g_pCvars[SQL_DATABASE], szDB, charsmax(szDB));
+	
+	if(contain(szDB, ".") > 0)
+	{
+		state sqlite;
+	}
+		
+	SQL_Init();
+}
+SQL_Init()<sqlite>
 {
 	SQL_SetAffinity("sqlite");
 	
-	if(!file_exists(DATABASE))
+	new szDir[128]; get_localinfo("amxx_datadir", szDir, charsmax(szDir));
+	new szDB[32]; get_pcvar_string(g_pCvars[SQL_DATABASE], szDB, charsmax(szDB));
+	new szFile[128]; format(szFile, charsmax(szFile), "%s/%s", szDir, szDB);
+	
+	if(!file_exists(szFile))
 	{
-		new file = fopen(DATABASE, "w");
+		new file = fopen(szFile, "w");
 		if(!file)
 		{
-			new szMsg[128]; formatex(szMsg, charsmax(szMsg), "%s file not found and cant be created.", DATABASE);
+			new szMsg[128]; formatex(szMsg, charsmax(szMsg), "%s file not found and cant be created.", szFile);
 			set_fail_state(szMsg);
 		}
 		fclose(file);
 	}
 	
-	g_hTuple = SQL_MakeDbTuple("", "", "", DATABASE, 0);
-	
+	g_hTuple = SQL_MakeDbTuple("", "", "", szFile, 0);
 	
 	formatex(g_szQuery, charsmax(g_szQuery),
 			"CREATE TABLE IF NOT EXISTS `runners`( \
@@ -174,6 +213,58 @@ SQL_Init()
 			recorddate	DATETIME	NULL, \
 			FOREIGN KEY(id) REFERENCES `runners`(id) ON DELETE CASCADE, \
 			FOREIGN KEY(mid) REFERENCES `maps`(mid) ON DELETE CASCADE, \
+			PRIMARY KEY(id, mid, category))");
+	
+	SQL_ThreadQuery(g_hTuple, "Query_IngnoredHandle", g_szQuery);
+	
+	set_task(1.0, "DelayedLoadMapInfo");
+}
+SQL_Init()<mysql>
+{
+	new szHost[32], szUser[32], szPass[32], szDB[32];
+	get_pcvar_string(g_pCvars[SQL_HOST], szHost, charsmax(szHost));
+	get_pcvar_string(g_pCvars[SQL_USER], szUser, charsmax(szUser));
+	get_pcvar_string(g_pCvars[SQL_PASSWORD], szPass, charsmax(szPass));
+	get_pcvar_string(g_pCvars[SQL_DATABASE], szDB, charsmax(szDB));
+	
+	g_hTuple = SQL_MakeDbTuple(szHost, szUser, szPass, szDB);
+	
+	if(g_hTuple == Empty_Handle)
+	{
+		set_fail_state("Cant create connection tuple");
+	}
+	
+	formatex(g_szQuery, charsmax(g_szQuery),
+			"CREATE TABLE IF NOT EXISTS `runners`(\
+			id			INT(11)	UNSIGNED	AUTO_INCREMENT,\
+			steamid		VARCHAR(32)	NOT NULL,\
+			nickname	VARCHAR(32)	NOT NULL,\
+			ip			VARCHAR(32)	NOT NULL,\
+			nationality	VARCHAR(3)	NULL,\
+			PRIMARY KEY(id))");
+	
+	SQL_ThreadQuery(g_hTuple, "Query_IngnoredHandle", g_szQuery);
+	
+	formatex(g_szQuery, charsmax(g_szQuery),
+			"CREATE TABLE IF NOT EXISTS `maps`(\
+			mid 		INT(11)	UNSIGNED 	AUTO_INCREMENT,\
+			mapname		VARCHAR(64)	NOT NULL	UNIQUE,\
+			finishX		INT(11) 	NOT NULL	DEFAULT 0,\
+			finishY		INT(11) 	NOT NULL 	DEFAULT 0,\
+			finishZ		INT(11) 	NOT NULL 	DEFAULT 0,\
+			PRIMARY KEY(mid))");
+	
+	SQL_ThreadQuery(g_hTuple, "Query_IngnoredHandle", g_szQuery);
+	
+	formatex(g_szQuery, charsmax(g_szQuery),
+			"CREATE TABLE IF NOT EXISTS `results`(\
+			id			INT(11)		UNSIGNED,\
+			mid			INT(11)		UNSIGNED,\
+			category	INT(11)		NOT NULL,\
+			besttime	INT(11)		NOT NULL,\
+			recorddate	DATETIME	NULL,\
+			FOREIGN KEY(id) REFERENCES `runners`(id) ON DELETE CASCADE,\
+			FOREIGN KEY(mid) REFERENCES `maps`(mid) ON DELETE CASCADE,\
 			PRIMARY KEY(id, mid, category))");
 	
 	SQL_ThreadQuery(g_hTuple, "Query_IngnoredHandle", g_szQuery);
@@ -551,13 +642,21 @@ public SaveRunnerData(id, category, iTime)
 {
 	if(!g_ePlayerInfo[id][m_bAuthorized]) return;
 	
+	new query_type = g_iBestTime[id][category] ? 1 : 0;
+	
 	g_iBestTime[id][category] = iTime;
 	new szRecordTime[32]; get_time("%Y-%m-%d %H:%M:%S", szRecordTime, charsmax(szRecordTime));
 	
-	formatex(g_szQuery, charsmax(g_szQuery), "INSERT OR IGNORE INTO `results` VALUES (%d, %d, %d, %d, '%s'); \
-			UPDATE `results` SET besttime=%d, recorddate='%s' WHERE id=%d AND mid=%d AND category=%d",
-		g_ePlayerInfo[id][m_iPlayerIndex], g_iMapIndex, category, iTime, szRecordTime,
-		iTime, szRecordTime, g_ePlayerInfo[id][m_iPlayerIndex], g_iMapIndex, category);
+	if(query_type)
+	{
+		formatex(g_szQuery, charsmax(g_szQuery), "UPDATE `results` SET besttime=%d, recorddate='%s' WHERE id=%d AND mid=%d AND category=%d",
+			iTime, szRecordTime, g_ePlayerInfo[id][m_iPlayerIndex], g_iMapIndex, category);
+	}
+	else
+	{
+		formatex(g_szQuery, charsmax(g_szQuery), "INSERT `results` VALUES (%d, %d, %d, %d, '%s')",
+			g_ePlayerInfo[id][m_iPlayerIndex], g_iMapIndex, category, iTime, szRecordTime);
+	}
 	
 	SQL_ThreadQuery(g_hTuple, "Query_IngnoredHandle", g_szQuery);
 }
@@ -572,7 +671,6 @@ ShowTop15(id, category)
 	new data[2]; data[0] = id; data[1] = category;
 	SQL_ThreadQuery(g_hTuple, "Query_LoadTop15Handle", g_szQuery, data, sizeof(data));
 }
-
 public Query_LoadTop15Handle(failstate, Handle:query, error[], errnum, data[], size)
 {
 	if(failstate != TQUERY_SUCCESS)
