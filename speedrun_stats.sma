@@ -135,6 +135,7 @@ public Command_Top15(id)
 }
 public Command_Update(id)
 {
+	if(!g_ePlayerInfo[id][m_bAuthorized] || is_flooding(id)) return PLUGIN_HANDLED;
 	
 	new szName[32]; get_user_name(id, szName, charsmax(szName)); SQL_PrepareString(szName, szName, charsmax(szName));
 	formatex(g_szQuery, charsmax(g_szQuery), "UPDATE `runners` SET nickname = '%s' WHERE id=%d", szName, g_ePlayerInfo[id][m_iPlayerIndex]);
