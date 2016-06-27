@@ -93,8 +93,10 @@ public plugin_init()
 	g_fwFinished = CreateMultiForward("SR_PlayerFinishedMap", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL);
 	
 	CreateTimer();
-	
-	DB_Init();
+}
+public plugin_cfg()
+{
+	set_task(0.5, "DB_Init");
 }
 public plugin_precache()
 {
@@ -151,7 +153,7 @@ CreateTimer()
 	set_entvar(ent, var_nextthink, get_gametime() + 1.0);	
 	register_think("timer_think", "Think_Timer");
 }
-DB_Init()
+public DB_Init()
 {
 	state mysql;
 	
