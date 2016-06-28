@@ -80,6 +80,7 @@ public plugin_init()
 	g_pCvars[SQL_DATABASE] = register_cvar("speedrun_database", "speedrun");
 	
 	register_clcmd("setfinish", "Command_SetFinish", ADMIN_CFG);
+	register_clcmd("say /rank", "Command_Rank");
 	register_clcmd("say /top15", "Command_Top15");
 	register_clcmd("say /update", "Command_Update");
 	
@@ -127,9 +128,25 @@ SaveFinishOrigin()
 		SQL_ThreadQuery(g_hTuple, "Query_IngnoredHandle", g_szQuery);
 	}
 }
+public Command_Rank(id)
+{
+	if(!g_ePlayerInfo[id][m_bAuthorized] || is_flooding(id)) return PLUGIN_HANDLED;
+	
+	new category = get_user_category(id);
+	
+	if(g_iBestTime[id][category] == 0)
+	{
+		client_print_color(id, print_team_default, "%s%s^1 You never reach finish.", PREFIX, g_szCategory[category]);
+		return PLUGIN_CONTINUE;
+	}
+	
+	ShowRank(id, category);
+	
+	return PLUGIN_CONTINUE;
+}
 public Command_Top15(id)
 {
-	if(is_flooding(id)) return PLUGIN_HANDLED;
+	if(!g_ePlayerInfo[id][m_bAuthorized] || is_flooding(id)) return PLUGIN_HANDLED;
 	
 	ShowTop15(id, get_user_category(id));
 	
@@ -657,14 +674,36 @@ public SaveRunnerData(id, category, iTime)
 	}
 	else
 	{
-		formatex(g_szQuery, charsmax(g_szQuery), "INSERT `results` VALUES (%d, %d, %d, %d, '%s')",
+		formatex(g_szQuery, charsmax(g_szQuery), "INSERT INTO `results` VALUES (%d, %d, %d, %d, '%s')",
 			g_ePlayerInfo[id][m_iPlayerIndex], g_iMapIndex, category, iTime, szRecordTime);
 	}
 	
 	SQL_ThreadQuery(g_hTuple, "Query_IngnoredHandle", g_szQuery);
 }
 
-
+ShowRank(id, category)
+{
+	formatex(g_szQuery, charsmax(g_szQuery), "SELECT COUNT(*) FROM `results` WHERE mid=%d AND category=%d AND besttime > 0 AND besttime < %d", 
+			g_iMapIndex, category, g_iBestTime[id][category]);
+		
+	new data[2]; data[0] = id; data[1] = category;
+	SQL_ThreadQuery(g_hTuple, "Query_LoadRankHandle", g_szQuery, data, sizeof(data));
+}
+public Query_LoadRankHandle(failstate, Handle:query, error[], errnum, data[], size)
+{
+	if(failstate != TQUERY_SUCCESS)
+	{
+		log_amx("SQL error[LoadRankHandle]: %s", error); return;
+	}
+	
+	new id = data[0];
+	new category = data[1];
+	
+	if(!is_user_connected(id) || !SQL_MoreResults(query)) return;
+	
+	new rank = SQL_ReadResult(query, 0) + 1;
+	client_print_color(id, print_team_default, "%s%s^1 Your rank is %d!", PREFIX, g_szCategory[category], rank);
+}
 
 ShowTop15(id, category)
 {
