@@ -726,8 +726,10 @@ public Query_LoadTop15Handle(failstate, Handle:query, error[], errnum, data[], s
 	new category = data[1];
 	
 	new iLen = 0, iMax = charsmax(g_szMotd);
-	iLen += formatex(g_szMotd[iLen], iMax-iLen, "<pre>");
-	iLen += formatex(g_szMotd[iLen], iMax-iLen, "Pos.     Player     Time^n");
+	iLen = formatex(g_szMotd[iLen], iMax-iLen, "<meta charset=utf-8>");
+	iLen += formatex(g_szMotd[iLen], iMax-iLen, "<style>{font:normal 10px} table, th, td{border: 1px solid black;border-collapse:collapse;text-align:center;}");
+	iLen += formatex(g_szMotd[iLen], iMax-iLen, "</style><html><table width=100%%><thead><tr><th width=10%%>%s</th> <th width=50%%>%s</th><th width=20%%>%s</th><th width=20%%></th></tr></thead><tbody>", "Pos.", "Player", "Time");
+	
 	
 	new i = 1;
 	new iTime, szName[32], szTime[32];
@@ -737,21 +739,21 @@ public Query_LoadTop15Handle(failstate, Handle:query, error[], errnum, data[], s
 		iTime = SQL_ReadResult(query, 1);
 		get_formated_time(iTime, szTime, 31);
 		
-		iLen += formatex(g_szMotd[iLen], iMax-iLen, "%-3d %-32s   ", i, szName);
+		iLen += formatex(g_szMotd[iLen], iMax-iLen, "<tr><td>%d</td><td>%s</td>", i, szName);
 		if(i == 1)
 		{
 			g_iBestTimeofMap[category] = iTime;
-			iLen += formatex(g_szMotd[iLen], iMax-iLen, " %-15s ",  szTime);
+			iLen += formatex(g_szMotd[iLen], iMax-iLen, "<td>%s</td><td></td>",  szTime);
 			if(id == 0) return;
 		}
 		else
 		{
-			iLen += formatex(g_szMotd[iLen], iMax-iLen, " %-15s  ", szTime);
+			iLen += formatex(g_szMotd[iLen], iMax-iLen, "<td>%s</td>", szTime);
 			
 			get_formated_time(iTime-g_iBestTimeofMap[category] , szTime, 31);
-			iLen += formatex(g_szMotd[iLen], iMax-iLen, "+%-15s", szTime);
+			iLen += formatex(g_szMotd[iLen], iMax-iLen, "<td>+%s</td>", szTime);
 		}
-		iLen += formatex(g_szMotd[iLen], iMax-iLen, "^n");
+		iLen += formatex(g_szMotd[iLen], iMax-iLen, "</tr>");
 		
 		i++;
 		SQL_NextRow(query);

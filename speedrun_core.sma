@@ -8,7 +8,7 @@
 #endif
 	
 #define PLUGIN "Speedrun: Core"
-#define VERSION "0.3"
+#define VERSION "0.4"
 #define AUTHOR "Mistrick"
 
 #pragma semicolon 1
@@ -19,6 +19,7 @@
 #define FPS_OFFSET 10
 #define CRAZYSPEED_BOOST 250.0
 #define FASTRUN_AIRACCELERATE -55.0
+#define PUSH_DIST 300.0
 
 new const PREFIX[] = "^4[Speedrun]";
 
@@ -144,6 +145,7 @@ public plugin_cfg()
 	LoadStartPosition();
 	SetGameName();
 	BlockChangingTeam();
+	BlockSpawnTriggerPush();
 }
 LoadStartPosition()
 {
@@ -178,6 +180,50 @@ BlockChangingTeam()
 	}
 	register_clcmd("chooseteam", "Command_Chooseteam");
 }
+
+new Float:g_fSpawns[32][3], g_iSpawnsNum;
+
+BlockSpawnTriggerPush()
+{
+	new ent = -1;
+	while((ent = rg_find_ent_by_class(ent, "info_player_start")))
+	{
+		get_entvar(ent, var_origin, g_fSpawns[g_iSpawnsNum++]);
+		if(g_iSpawnsNum >= sizeof(g_fSpawns)) break;
+	}
+	SetTriggerPushSolid(SOLID_NOT);
+}
+SetTriggerPushSolid(solid)
+{
+	new ent = -1;
+	while((ent = rg_find_ent_by_class(ent, "trigger_push")))
+	{
+		if(is_on_spawn(ent, PUSH_DIST))
+		{
+			set_entvar(ent, var_solid, solid);
+		}
+	}
+}
+is_on_spawn(ent, Float:fMaxDistance)
+{
+	new Float:fMins[3], Float:fOrigin[3];
+	get_entvar(ent, var_absmin, fMins);
+	get_entvar(ent, var_absmax, fOrigin);
+	
+	//xs_vec_sub(fOrigin, fMins, fOriginm);
+	//xs_vec_mul_scalar(fOrigin, 0.5, );
+	fOrigin[0] = (fOrigin[0]+fMins[0])/2;
+	fOrigin[1] = (fOrigin[1]+fMins[1])/2;
+	fOrigin[2] = (fOrigin[2]+fMins[2])/2;
+
+	for(new i = 0; i < g_iSpawnsNum; i++)
+	{
+		if(get_distance_f(fOrigin, g_fSpawns[i]) < fMaxDistance)
+			return 1;
+	}
+	return 0;
+}
+
 public plugin_natives()
 {
 	register_native("get_user_category", "_get_user_category", 1);
