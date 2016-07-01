@@ -2,13 +2,14 @@
 #include <fakemeta>
 #include <hamsandwich>
 #include <reapi>
+#include <box_system>
 
 #if AMXX_VERSION_NUM < 183
 #include <colorchat>
 #endif
 	
 #define PLUGIN "Speedrun: Core"
-#define VERSION "0.4"
+#define VERSION "0.5"
 #define AUTHOR "Mistrick"
 
 #pragma semicolon 1
@@ -40,11 +41,12 @@ enum _:Categories
 };
 enum _:PlayerData
 {
-	m_Bhop,
-	m_Speed,
-	m_Frames,
-	m_Category,
-	m_SavePoint
+	m_bBhop,
+	m_bSpeed,
+	m_bInSaveBox,
+	m_bSavePoint,
+	m_iFrames,
+	m_iCategory
 };
 
 new g_iCategorySign[Categories] = {100, 200, 250, 333, 500, 1, 2};
@@ -56,6 +58,7 @@ new g_iSyncHudSpeed;
 new g_fwChangedCategory;
 new g_fwOnStart;
 new g_iReturn;
+new Float:g_fSavedOrigin[33][3], Float:g_fSavedVAngles[33][3];
 
 public plugin_init()
 {
@@ -66,12 +69,14 @@ public plugin_init()
 	register_clcmd("say /bhop", "Command_Bhop");
 	register_clcmd("say /speed", "Command_Speed");
 	register_clcmd("say /spec", "Command_Spec");
-	register_clcmd("say /game", "CategoryMenu");
-	register_clcmd("say /fps", "SpeedrunMenu");
-	register_clcmd("drop", "CategoryMenu");
+	register_clcmd("say /game", "Command_CategoryMenu");
+	register_clcmd("say /fps", "Command_SpeedrunMenu");
+	register_clcmd("say /save", "Command_SaveMenu");
+	register_clcmd("drop", "Command_CategoryMenu");
 	
 	register_menucmd(register_menuid("CategoryMenu"), 1023, "CategoryMenu_Handler");
 	register_menucmd(register_menuid("SpeedrunMenu"), 1023, "SpeedrunMenu_Handler");
+	register_menucmd(register_menuid("SaveMenu"), 1023, "SaveMenu_Handler");
 	
 	register_message(get_user_msgid("ScoreInfo"), "Message_ScoreInfo");
 	
@@ -231,22 +236,22 @@ public plugin_natives()
 }
 public _get_user_category(id)
 {
-	return g_ePlayerInfo[id][m_Category];
+	return g_ePlayerInfo[id][m_iCategory];
 }
 public _set_user_category(id, category)
 {
-	g_ePlayerInfo[id][m_Category] = category;
+	g_ePlayerInfo[id][m_iCategory] = category;
 	if(is_user_alive(id)) ExecuteHamB(Ham_CS_RoundRespawn, id);
 }
 public client_putinserver(id)
 {
-	g_ePlayerInfo[id][m_Bhop] = true;
-	g_ePlayerInfo[id][m_Speed] = true;
-	g_ePlayerInfo[id][m_Category] = Cat_500fps;
+	g_ePlayerInfo[id][m_bBhop] = true;
+	g_ePlayerInfo[id][m_bSpeed] = true;
+	g_ePlayerInfo[id][m_iCategory] = Cat_500fps;
 }
 public client_disconnect(id)
 {
-	g_ePlayerInfo[id][m_Speed] = false;
+	g_ePlayerInfo[id][m_bSpeed] = false;
 }
 public Command_SetStart(id, flag)
 {
@@ -277,9 +282,9 @@ public Command_Start(id)
 {
 	if(!is_user_alive(id)) return PLUGIN_HANDLED;
 	
-	if(g_ePlayerInfo[id][m_SavePoint])
+	if(g_ePlayerInfo[id][m_bSavePoint])
 	{
-		//SetPosition(id, g_fSavedOrigin[id], g_fSavedVAngles[id]);
+		SetPosition(id, g_fSavedOrigin[id], g_fSavedVAngles[id]);
 	}
 	else if(g_bStartPosition)
 	{
@@ -305,13 +310,13 @@ SetPosition(id, Float:origin[3], Float:vangles[3])
 }
 public Command_Bhop(id)
 {
-	g_ePlayerInfo[id][m_Bhop] = !g_ePlayerInfo[id][m_Bhop];
-	client_print_color(id, print_team_default, "%s^1 Bhop is^3 %s^1.", PREFIX, g_ePlayerInfo[id][m_Bhop] ? "enabled" : "disabled");
+	g_ePlayerInfo[id][m_bBhop] = !g_ePlayerInfo[id][m_bBhop];
+	client_print_color(id, print_team_default, "%s^1 Bhop is^3 %s^1.", PREFIX, g_ePlayerInfo[id][m_bBhop] ? "enabled" : "disabled");
 }
 public Command_Speed(id)
 {
-	g_ePlayerInfo[id][m_Speed] = !g_ePlayerInfo[id][m_Speed];
-	client_print_color(id, print_team_default, "^4%s^1 Speedometer is^3 %s^1.", PREFIX, g_ePlayerInfo[id][m_Speed] ? "enabled" : "disabled");
+	g_ePlayerInfo[id][m_bSpeed] = !g_ePlayerInfo[id][m_bSpeed];
+	client_print_color(id, print_team_default, "^4%s^1 Speedometer is^3 %s^1.", PREFIX, g_ePlayerInfo[id][m_bSpeed] ? "enabled" : "disabled");
 }
 public Command_Spec(id)
 {
@@ -335,14 +340,14 @@ public Command_Chooseteam(id)
 	client_print_color(id, print_team_default, "%s^1 Sometime there will be menu.", PREFIX);
 	return PLUGIN_HANDLED;
 }
-public CategoryMenu(id)
+public Command_CategoryMenu(id)
 {
 	new szMenu[128], len = 0;
 	
 	len = formatex(szMenu[len], charsmax(szMenu) - len, "\yCategory Menu^n^n");
-	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r1. %sSpeedrun^n", g_ePlayerInfo[id][m_Category] < Cat_FastRun ? "\r" : "\w");
-	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r2. %sFastrun^n", g_ePlayerInfo[id][m_Category] == Cat_FastRun ? "\r" : "\w");
-	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r3. %sCrazySpeed^n", g_ePlayerInfo[id][m_Category] == Cat_CrazySpeed ? "\r" : "\w");
+	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r1. %sSpeedrun^n", g_ePlayerInfo[id][m_iCategory] < Cat_FastRun ? "\r" : "\w");
+	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r2. %sFastrun^n", g_ePlayerInfo[id][m_iCategory] == Cat_FastRun ? "\r" : "\w");
+	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r3. %sCrazySpeed^n", g_ePlayerInfo[id][m_iCategory] == Cat_CrazySpeed ? "\r" : "\w");
 	len += formatex(szMenu[len], charsmax(szMenu) - len, "^n^n^n^n^n^n\r0. \wExit");
 	
 	show_menu(id, (1 << 0)|(1 << 1)|(1 << 2)|(1 << 9), szMenu, -1, "CategoryMenu");
@@ -352,28 +357,28 @@ public CategoryMenu_Handler(id, key)
 {
 	switch(key)
 	{
-		case 0: SpeedrunMenu(id);
-		case 1: g_ePlayerInfo[id][m_Category] = Cat_FastRun;
-		case 2: g_ePlayerInfo[id][m_Category] = Cat_CrazySpeed;
+		case 0: Command_SpeedrunMenu(id);
+		case 1: g_ePlayerInfo[id][m_iCategory] = Cat_FastRun;
+		case 2: g_ePlayerInfo[id][m_iCategory] = Cat_CrazySpeed;
 	}
 	
 	if(key && key <= 2)
 	{
 		if(is_user_alive(id)) ExecuteHamB(Ham_CS_RoundRespawn, id);
 		
-		ExecuteForward(g_fwChangedCategory, g_iReturn, id, g_ePlayerInfo[id][m_Category]);
+		ExecuteForward(g_fwChangedCategory, g_iReturn, id, g_ePlayerInfo[id][m_iCategory]);
 	}
 }
-public SpeedrunMenu(id)
+public Command_SpeedrunMenu(id)
 {
 	new szMenu[128], len = 0;
 	
 	len = formatex(szMenu[len], charsmax(szMenu) - len, "\ySpeedrun Menu^n^n");
-	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r1. %s100 FPS^n", g_ePlayerInfo[id][m_Category] == Cat_100fps ? "\r" : "\w");
-	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r2. %s200 FPS^n", g_ePlayerInfo[id][m_Category] == Cat_200fps ? "\r" : "\w");
-	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r3. %s250 FPS^n", g_ePlayerInfo[id][m_Category] == Cat_250fps ? "\r" : "\w");
-	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r4. %s333 FPS^n", g_ePlayerInfo[id][m_Category] == Cat_333fps ? "\r" : "\w");
-	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r5. %s500 FPS^n", g_ePlayerInfo[id][m_Category] == Cat_500fps ? "\r" : "\w");
+	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r1. %s100 FPS^n", g_ePlayerInfo[id][m_iCategory] == Cat_100fps ? "\r" : "\w");
+	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r2. %s200 FPS^n", g_ePlayerInfo[id][m_iCategory] == Cat_200fps ? "\r" : "\w");
+	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r3. %s250 FPS^n", g_ePlayerInfo[id][m_iCategory] == Cat_250fps ? "\r" : "\w");
+	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r4. %s333 FPS^n", g_ePlayerInfo[id][m_iCategory] == Cat_333fps ? "\r" : "\w");
+	len += formatex(szMenu[len], charsmax(szMenu) - len, "\r5. %s500 FPS^n", g_ePlayerInfo[id][m_iCategory] == Cat_500fps ? "\r" : "\w");
 	len += formatex(szMenu[len], charsmax(szMenu) - len, "^n^n^n^n\r0. \wExit");
 	
 	show_menu(id, (1 << 0)|(1 << 1)|(1 << 2)|(1 << 3)|(1 << 4)|(1 << 9), szMenu, -1, "SpeedrunMenu");
@@ -383,25 +388,82 @@ public SpeedrunMenu_Handler(id, key)
 {
 	switch(key)
 	{
-		case 0: g_ePlayerInfo[id][m_Category] = Cat_100fps;
-		case 1: g_ePlayerInfo[id][m_Category] = Cat_200fps;
-		case 2: g_ePlayerInfo[id][m_Category] = Cat_250fps;
-		case 3: g_ePlayerInfo[id][m_Category] = Cat_333fps;
-		case 4: g_ePlayerInfo[id][m_Category] = Cat_500fps;
+		case 0: g_ePlayerInfo[id][m_iCategory] = Cat_100fps;
+		case 1: g_ePlayerInfo[id][m_iCategory] = Cat_200fps;
+		case 2: g_ePlayerInfo[id][m_iCategory] = Cat_250fps;
+		case 3: g_ePlayerInfo[id][m_iCategory] = Cat_333fps;
+		case 4: g_ePlayerInfo[id][m_iCategory] = Cat_500fps;
 	}
 	if(key != 9)
 	{
 		if(is_user_alive(id)) ExecuteHamB(Ham_CS_RoundRespawn, id);
 		
-		ExecuteForward(g_fwChangedCategory, g_iReturn, id, g_ePlayerInfo[id][m_Category]);
+		ExecuteForward(g_fwChangedCategory, g_iReturn, id, g_ePlayerInfo[id][m_iCategory]);
 	}
+}
+public Command_SaveMenu(id)
+{
+	new szMenu[256], iLen, iMax = charsmax(szMenu), Keys;
+	
+	iLen = formatex(szMenu, iMax, "\yStartpoint Menu^n^n");
+	iLen += formatex(szMenu[iLen], iMax - iLen, "\r1.\w Save Startpoint%s^n", g_ePlayerInfo[id][m_bSavePoint] ? "\r[active]" : "\y[inactive]");
+	iLen += formatex(szMenu[iLen], iMax - iLen, "\r2.\w Delete Startpoint^n");
+	iLen += formatex(szMenu[iLen], iMax - iLen, "\r3.\w Start^n");
+	iLen += formatex(szMenu[iLen], iMax - iLen, "^n^n^n^n^n^n\r0.\w Exit");
+	
+	Keys |= (1 << 0)|(1 << 1)|(1 << 2)|(1 << 9);
+	
+	show_menu(id, Keys, szMenu, -1, "SaveMenu");
+	return PLUGIN_HANDLED;
+}
+public SaveMenu_Handler(id, key)
+{
+	if(!is_user_alive(id)) return PLUGIN_HANDLED;
+	
+	switch(key)
+	{
+		case 0:
+		{
+			new Float:fVelocity[3]; get_entvar(id, var_velocity, fVelocity);
+			if(g_ePlayerInfo[id][m_bInSaveBox] && floatabs(fVelocity[0]) < 0.00001 && floatabs(fVelocity[1]) < 0.00001 && floatabs(fVelocity[2]) < 0.00001)
+			{
+				get_entvar(id, var_origin, g_fSavedOrigin[id]);
+				get_entvar(id, var_v_angle, g_fSavedVAngles[id]);
+				
+				g_ePlayerInfo[id][m_bSavePoint] = true;
+				client_print_color(id, print_team_default, "%s^1 Start point created.", PREFIX);
+			}
+			else
+			{
+				client_print_color(id, print_team_red, "%s^3 You must be in spawnbox or stop moving.", PREFIX);
+			}
+		}
+		case 1:
+		{
+			g_ePlayerInfo[id][m_bSavePoint] = false;
+			client_print_color(id, print_team_default, "%s^1 Start point removed.", PREFIX);
+		}
+		case 2:	Command_Start(id);
+	}	
+	
+	if(key < 3) Command_SaveMenu(id);
+	
+	return PLUGIN_HANDLED;
+}
+public box_start_touch(box, id, const szClass[])
+{
+	g_ePlayerInfo[id][m_bInSaveBox] = true;
+}
+public box_stop_touch(box, id, const szClass[])
+{
+	g_ePlayerInfo[id][m_bInSaveBox] = false;
 }
 //*******************************************************************//
 public Message_ScoreInfo(Msgid, Dest, id)
 {
 	new player = get_msg_arg_int(1);
 	set_msg_arg_int(2, ARG_SHORT, 0);//frags
-	set_msg_arg_int(3, ARG_SHORT, g_iCategorySign[g_ePlayerInfo[player][m_Category]]);//deaths
+	set_msg_arg_int(3, ARG_SHORT, g_iCategorySign[g_ePlayerInfo[player][m_iCategory]]);//deaths
 }
 //*******************************************************************//
 public HC_CBasePlayer_Spawn_Post(id)
@@ -434,7 +496,7 @@ public HC_CBasePlayer_GiveDefaultItems(id)
 }
 public HC_CBasePlayer_Jump_Pre(id)
 {
-	if(!g_ePlayerInfo[id][m_Bhop]) return HC_CONTINUE;
+	if(!g_ePlayerInfo[id][m_bBhop]) return HC_CONTINUE;
 	
 	new flags = get_entvar(id, var_flags);
 	
@@ -444,7 +506,7 @@ public HC_CBasePlayer_Jump_Pre(id)
 	
 	get_entvar(id, var_velocity, fVelocity);
 	
-	if(g_ePlayerInfo[id][m_Category] == Cat_CrazySpeed)
+	if(g_ePlayerInfo[id][m_iCategory] == Cat_CrazySpeed)
 	{		
 		get_entvar(id, var_angles, fAngles);
 		
@@ -461,7 +523,7 @@ public HC_CBasePlayer_Jump_Pre(id)
 }
 public HC_PM_AirMove_Pre(id)
 {
-	if(g_ePlayerInfo[id][m_Category] != Cat_FastRun) return HC_CONTINUE;
+	if(g_ePlayerInfo[id][m_iCategory] != Cat_FastRun) return HC_CONTINUE;
 	
 	static bFastRun[33];
 	new buttons = get_entvar(id, var_button);
@@ -488,7 +550,7 @@ public HC_CSGR_DeadPlayerWeapons_Pre(id)
 }
 public HC_CBasePlayer_PreThink(id)
 {
-	g_ePlayerInfo[id][m_Frames]++;
+	g_ePlayerInfo[id][m_iFrames]++;
 }
 //*******************************************************************//
 public FM_ClientKill_Pre(id)
@@ -502,7 +564,7 @@ public Task_ShowSpeed()
 	new Float:fSpeed, Float:fVelocity[3], iSpecMode;
 	for(new id = 1, target; id <= MAX_PLAYERS; id++)
 	{
-		if(!g_ePlayerInfo[id][m_Speed]) continue;
+		if(!g_ePlayerInfo[id][m_bSpeed]) continue;
 		
 		iSpecMode = get_entvar(id, var_iuser1);
 		target = (iSpecMode == 1  || iSpecMode == 2 || iSpecMode == 4) ? get_entvar(id, var_iuser2) : id;
@@ -520,17 +582,17 @@ public Task_CheckFrames()
 	{
 		if(!is_user_alive(id))
 		{
-			g_ePlayerInfo[id][m_Frames] = 0;
+			g_ePlayerInfo[id][m_iFrames] = 0;
 			continue;
 		}
 		
-		new cat = g_ePlayerInfo[id][m_Category];
-		if(g_ePlayerInfo[id][m_Category] < Cat_FastRun && g_ePlayerInfo[id][m_Frames] > g_iCategorySign[cat] + FPS_OFFSET
-			|| g_ePlayerInfo[id][m_Category] >= Cat_FastRun && g_ePlayerInfo[id][m_Frames] > FPS_LIMIT + FPS_OFFSET)
+		new cat = g_ePlayerInfo[id][m_iCategory];
+		if(g_ePlayerInfo[id][m_iCategory] < Cat_FastRun && g_ePlayerInfo[id][m_iFrames] > g_iCategorySign[cat] + FPS_OFFSET
+			|| g_ePlayerInfo[id][m_iCategory] >= Cat_FastRun && g_ePlayerInfo[id][m_iFrames] > FPS_LIMIT + FPS_OFFSET)
 		{
 			ExecuteHamB(Ham_CS_RoundRespawn, id);
-			client_print_color(id, print_team_red, "%s^3 Write in your console fps_max %d!", PREFIX, g_ePlayerInfo[id][m_Category] < Cat_FastRun ? g_iCategorySign[cat] : FPS_LIMIT);
+			client_print_color(id, print_team_red, "%s^3 Write in your console fps_max %d!", PREFIX, g_ePlayerInfo[id][m_iCategory] < Cat_FastRun ? g_iCategorySign[cat] : FPS_LIMIT);
 		}
-		g_ePlayerInfo[id][m_Frames] = 0;
+		g_ePlayerInfo[id][m_iFrames] = 0;
 	}
 }

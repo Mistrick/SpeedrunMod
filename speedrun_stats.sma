@@ -6,13 +6,14 @@
 #include <reapi>
 #include <geoip>
 #include <sqlx>
+#include <box_system>
 
 #if AMXX_VERSION_NUM < 183
 #include <colorchat>
 #endif
 
 #define PLUGIN "Speedrun: Stats"
-#define VERSION "0.2"
+#define VERSION "0.3"
 #define AUTHOR "Mistrick"
 
 #pragma semicolon 1
@@ -596,6 +597,13 @@ public HC_CheckStartTimer(id)
 		StartTimer(id);
 	}
 }
+public box_stop_touch(box, id, const szClass[])
+{
+	if(g_ePlayerInfo[id][m_bAuthorized] && !g_ePlayerInfo[id][m_bTimerStarted])
+	{
+		StartTimer(id);
+	}	
+}
 StartTimer(id)
 {
 	if(!g_iFinishEnt) return;
@@ -648,10 +656,10 @@ Forward_PlayerFinished(id)
 		
 		record = true;
 	}
-	if(g_iBestTimeofMap[category] != 0 && g_iBestTimeofMap[category]<iTime)
+	if(g_iBestTimeofMap[category] != 0 && g_iBestTimeofMap[category] < iTime)
 	{
 		get_formated_time(iTime - g_iBestTimeofMap[category], szTime, charsmax(szTime));
-		console_print(id, "%s Map record: -%s!", g_szCategory[category], szTime);
+		console_print(id, "%s Map record: +%s!", g_szCategory[category], szTime);
 	}
 	
 	ExecuteForward(g_fwFinished, g_iReturn, id, iTime, record);
