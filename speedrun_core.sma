@@ -247,6 +247,8 @@ public client_putinserver(id)
 {
 	g_ePlayerInfo[id][m_bBhop] = true;
 	g_ePlayerInfo[id][m_bSpeed] = true;
+	g_ePlayerInfo[id][m_bInSaveBox] = false;
+	g_ePlayerInfo[id][m_bSavePoint] = false;
 	g_ePlayerInfo[id][m_iCategory] = Cat_500fps;
 }
 public client_disconnect(id)
